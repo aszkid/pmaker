@@ -3,39 +3,159 @@
 # -------------------------------
 # PMAKER - Project Maker
 # -> The project bootstrapper
+# Author: aszkid
 # -------------------------------
 
-import argparse
-import subprocess
-import os
-import shutil
-import pprint
-import fileinput
-import re
+import argparse, subprocess, os, shutil, fileinput, re, sys
 
-# this should only be on DEV branch
-
-
+# -------------------------------
+# Arguments configuration
+# -------------------------------
 parser = argparse.ArgumentParser()
-parser.add_argument(
-	"name", help="The project name")
-parser.add_argument(
-	"language", help="The project language (c, cpp)")
-parser.add_argument(
-	"--git", help="Enable Git repository creation", action="store_true")
-parser.add_argument(
-	"--raze", help="Remove all contents of the project directory first", action="store_true")
-parser.add_argument(
-	"--cpp11", help="Enable C++11 (C++0X) in CMakeLists.txt", action="store_true")
-parser.add_argument(
-	"--c99", help="Enable C99 in CMakeLists.txt", action="store_true")
-parser.add_argument(
-	"--c11", help="Enable C11 in CMakeLists.txt", action="store_true")
-parser.add_argument(
-	"--libs", help="Libraries to use")
+parser.add_argument("name", help="The project name", type=str)
+parser.add_argument("language", help="The project language (c, cpp)", type=str)
+parser.add_argument("--libs", help="Libraries to use", type=str)
+parser.add_argument("--path", help="Specify a different project path", type=str)
+parser.add_argument("--git", help="Create a local Git repository after project startup", action="store_true")
+parser.add_argument("--clean", help="Remove all contents of the project directory before starting", action="store_true")
+parser.add_argument("--cpp11", help="Force C++11 ('-std=c++11') in CMakeLists.txt", action="store_true")
+parser.add_argument("--c99", help="Force C99 ('-std=c99') in CMakeLists.txt", action="store_true")
+parser.add_argument("--c11", help="Force C11 ('-std=c11') in CMakeLists.txt", action="store_true")
 
-args = parser.parse_args()
+# -------------------------------
+# General variables
+# -------------------------------
+ARGS = parser.parse_args()							# Parsed arguments
+PNAME = ARGS.name									# Project name
+PPATH = (ARGS.path if ARGS.path != None else PNAME) + "/"	# Project path
+SPATH = "pmaker/"									# Source path (the pmaker path)
+RPATH = "files/"									# Resources path (inside SPATH)
 
+# -------------------------------
+# Some helper functions
+# -------------------------------
+
+# CMake variable expander
+def cmake_set(var, val, rec = False):
+	if not rec:
+		return 'SET({0} "{1}")'.format(var, val)			# Return typical variable setting (e.g, 'SET(SOME_VAR "somevalue")')
+	else:
+		return 'SET({0} "${{{0}}} {1}")'.format(var, val)		# Return 'recursive' variable setting (e.g, 'SET(SOME_VAR "${SOME_VAR} somevalue")')
+
+# Path helpers
+def make_source(name, sub = None):
+	return "{0}{1}{2}{3}".format(SPATH, RPATH, (sub + "/") if sub else str(), name)		# Return resource path (e.g, pmaker/files/modules/boost.txt)
+def make_dest(name, sub = None):
+	return "{0}{1}{2}".format(PPATH, (sub + "/") if sub else str(), name)				# Return destination path (e.g, yourprojname/source/inc/lelp.hpp)
+	
+def user_confirm(msg, pref="y"):
+	r = str(raw_input(msg + " (" + ("Y/n" if pref == "y" else "y/N") + ")? ")).lower()
+	if r == "y":
+		return True
+	elif r == "n":
+		return False
+	else:
+		return True if pref == "y" else False
+
+# -------------------------------
+# DA CONFIG DICTIONARY
+# -------------------------------
+
+CFG = {
+	"langs" : {
+		"cpp/c" : {
+			"pure" : False,
+			"libs" : ["opengl","glsdk"],
+			"flags" : [],
+			"paths" : [					#Relative to 'projname/'
+				"source",
+				"projects",
+				"source/inc",
+				"source/src"
+			]
+		},
+		"cpp" : {
+			"pure" : True,
+			"libs" : ["boost", "sfml"],
+			"flags" : [
+				{
+					"name"		: "stdcpp11",
+					"excludes"	: "",
+					"from"		: "#STDCPP11#",
+					"to"			: cmake_set("CMAKE_CXX_FLAGS", "-std=c++11", True),
+					"desc"		: "Using C++11 compile flag..."
+				}
+			],
+			"paths" : []
+		},
+		"c" : {
+			"pure" : True,
+			"libs" : [],
+			"flags" : [
+				{
+					"name"		: "stdc99",
+					"excludes"	: "stdc11",
+					"from"		: "#STDC99#",
+					"to"			: cmake_set("CMAKE_C_FLAGS", "-std=c99", True),
+					"desc"		: "Using C99 compile flag..."
+				},
+				{
+					"name"		: "stdc11",
+					"excludes"	: "stdc99",
+					"from"		: "#STDC11#",
+					"to"			: cmake_set("CMAKE_C_FLAGS", "-std=c11", True),
+					"desc"		: "Using C11 compile flag..."
+				}
+			],
+			"paths" : []
+		}
+	}
+}
+
+# -------------------------------
+# BASE APPLICATION FUNCTIONS
+# -------------------------------
+
+# STEP NO. 0 - Check if language is existent
+def check_lang():	
+	for subl in CFG.get("langs"):
+		if (CFG.get("langs").get(subl).get("pure") == True) and (ARGS.language == subl):
+			print "Language selected ({0}) is correct...".format(ARGS.language)
+			return True
+	print "Language selected ({0}) is not in pmaker's database! Exiting.".format(ARGS.language)
+	return False
+
+# STEP NO. 1 (Optional) - Clean project directory
+def clean_proj():
+	if (ARGS.clean == True) and (user_confirm("Really clean project path","n")):
+		print "Cleaning project path ({0})...".format(PPATH)
+		for r, ds, fs in os.walk(PPATH):
+			for f in fs:
+				os.unlink(os.path.join(r, f))
+			for d in ds:
+				shutil.rmtree(os.path.join(r, d))
+	else:
+		print "Not cleaning project path..."
+
+# STEP NO. 2 - Create necessary folders
+def make_paths():
+	pass
+
+# STEP NO. 3 - Copy base files according to language specifications
+def copy_files():
+	pass
+
+# STEP NO. 4 (CPP/C Only) - Configure CMakeLists.txt
+def cmake_cfg():
+	pass
+
+# STEP NO. 5 (Optional) - Start a local Git repository
+def start_git():
+	pass
+
+
+
+"""
 libs = {
 	"cpp/c" : ["opengl","glsdk"],
 	"cpp" : ["boost","sfml","librocket"]
@@ -176,11 +296,12 @@ def startgit(do):
 		if checkgit():
 			print "Initializing local Git repository..."
 			execute("git init {0}".format(PSOURCE))
-
+"""
 if(__name__ == "__main__"):
-	raze(args.raze)
-	createdirs()
-	copyfiles()
-	cmakeset()
-	startgit(args.git)
-	print "We're done! Enjoy your new project!"
+	if not check_lang():	# Step 0
+		sys.exit(1)
+	clean_proj()	# Step 1
+	make_paths()	# Step 2
+	copy_files()	# Step 3
+	cmake_cfg()	# Step 4
+	start_git()	# Step 5
