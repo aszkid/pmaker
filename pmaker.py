@@ -11,6 +11,7 @@ import os
 import shutil
 import pprint
 import fileinput
+import re
 
 parser = argparse.ArgumentParser()
 parser.add_argument(
@@ -38,7 +39,7 @@ inside = False
 if os.getcwd().split(os.sep)[-1] == "pmaker":
 	p_prefix = "../"
 	inside = True
-	print "We are inside the pmaker directory!"
+	print("We are inside the pmaker directory!")
 PSOURCE = PNAME + "source"
 
 def path(p):
@@ -58,12 +59,12 @@ def createdirs():
 	for i, p in enumerate(paths):
 		paths[i] = path(paths[i])
 		if not os.path.isdir(paths[i]):
-			print "Creating path '%s'" % paths[i]
+			print("Creating path '%s'" % paths[i])
 			os.makedirs(paths[i])
 
 def raze(do):
 	if os.path.isdir(path(PNAME)) and do:
-		print "Razing..."
+		print("Razing...")
 		execute("rm -r %s" % path(PNAME))
 
 def prepareres(res):
@@ -71,6 +72,7 @@ def prepareres(res):
 	if not inside:
 		pre = "pmaker/" + pre
 	return pre + res
+
 def prepareobj(res, sub = ''):
 	return path(PSOURCE + sub + '/' + res)
 
@@ -94,16 +96,26 @@ def copyfiles(defs):
 					final.append(dict([('from',prepareres(f)),('to',prepareobj(f,"/"+t))]))
 	
 	for r in final:
-		print "Copying '{0}' to '{1}'".format(r["from"],r["to"])
+		print("Copying '{0}' to '{1}'".format(r["from"],r["to"]))
 		shutil.copy(r["from"],r["to"])
 
 def cmakeset():
-	for line in fileinput.input(prepareobj("CMakeLists.txt"),inplace=1):
-		print line.replace("__projxxxname__", args.name)
-		if args.language == "cpp":
-			if args.cpp11:
-				print line.replace("")
-			
+	#with open(prepareobj("CMakeLists.txt"),'rw') as file:
+	#	data = file.read()
+
+	s = open(prepareobj("CMakeLists.txt")).read()
+	s = s.replace('__projxxxname__', args.name)
+	if args.language == "cpp":
+		if args.cpp11:
+			s = s.replace('#USEC++11#', 'SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11")')
+	if args.language == "c":
+		if args.c99:
+			s = s.replace('#USEC99#', 'SET(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -std=c99")')
+		elif args.c11:
+			s = s.replace('#USEC99#', 'SET(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -std=c11")')
+	f = open(prepareobj("CMakeLists.txt"),'w')
+	f.write(s)
+	f.close()			
 
 if(__name__ == "__main__"):
 	raze(args.raze)
