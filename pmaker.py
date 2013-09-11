@@ -89,7 +89,12 @@ def prepareres(res):
 def prepareobj(res, sub = ''):
 	return path(PSOURCE + sub + '/' + res)
 
-def copyfiles(defs):
+def docopies(files):
+	for r in files:
+		print("Copying '{0}' to '{1}'".format(r["from"],r["to"]))
+		shutil.copy(r["from"],r["to"])
+
+def copyfiles():
 	general = [".gitignore", "CMakeLists.txt"]
 	specific = {
 		"cpp" : {
@@ -108,9 +113,17 @@ def copyfiles(defs):
 				for f in specific[lang][t]:
 					final.append(dict([('from',prepareres(f)),('to',prepareobj(f,"/"+t))]))
 	
+	already = False
+	
 	for r in final:
-		print("Copying '{0}' to '{1}'".format(r["from"],r["to"]))
-		shutil.copy(r["from"],r["to"])
+		if os.path.isfile(r["to"]):
+			already = True
+	
+	if already:
+		if str(raw_input("Replace existing files (y/N)? ")).lower() == "y":
+			docopies(final)
+	else:
+		docopies(final)
 
 def putlibs(filec, out, lang):
 	for lib in libs[lang]:
@@ -146,8 +159,25 @@ def cmakeset():
 	else:
 		print("Not using external libraries.")
 
+def checkgit():
+	if os.path.isdir(PSOURCE + "/.git"):
+		if str(raw_input("A Git repo already exists. Re-initialize (y/N)? ")).lower() == "y":
+			return True
+		else:
+			return False
+	else:
+		return True
+
+def startgit(do):
+	if do:
+		if checkgit():
+			print "Initializing local Git repository..."
+			execute("git init {0}".format(PSOURCE))
+
 if(__name__ == "__main__"):
 	raze(args.raze)
 	createdirs()
-	copyfiles(True) #args.defs
+	copyfiles()
 	cmakeset()
+	startgit(args.git)
+	print "We're done! Enjoy your new project!"
