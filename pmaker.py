@@ -47,7 +47,8 @@ def make_source(name, sub = None):
 	return "{0}{1}{2}{3}".format(SPATH, RPATH, (sub + "/") if sub else str(), name)		# Return resource path (e.g, pmaker/files/modules/boost.txt)
 def make_dest(name, sub = None):
 	return "{0}{1}{2}".format(PPATH, (sub + "/") if sub else str(), name)				# Return destination path (e.g, yourprojname/source/inc/lelp.hpp)
-	
+
+# User confirmation input, based on msg and preferred var (yes or no). Nice shortcut
 def user_confirm(msg, pref="y"):
 	r = str(raw_input(msg + " (" + ("Y/n" if pref == "y" else "y/N") + ")? ")).lower()
 	if r == "y":
@@ -56,6 +57,14 @@ def user_confirm(msg, pref="y"):
 		return False
 	else:
 		return True if pref == "y" else False
+
+# Check if a variable matches any element of a list
+def matches_any(var, source):
+	return any(sub == var for sub in source)
+	
+# Check if a path exists
+def path_exists(p):
+	return os.path.isdir(p)
 
 # -------------------------------
 # DA CONFIG DICTIONARY
@@ -139,7 +148,22 @@ def clean_proj():
 
 # STEP NO. 2 - Create necessary folders
 def make_paths():
-	pass
+	path_queue = []
+
+	if not path_exists(PPATH):
+		print "Creating base project path '{0}'...".format(PPATH)
+		path_queue.append(PPATH)
+	for lang in CFG.get("langs"):
+		if matches_any(ARGS.language, lang.split("/")):
+			print "Creating paths for project of language '{0}'...".format(lang)
+			for path in CFG.get("langs").get(lang).get("paths"):
+				finalpath = PPATH + path
+				if not path_exists(finalpath):
+					print "Making path '{0}'...".format(finalpath)
+					path_queue.append(finalpath)
+	
+	for p in path_queue:
+		os.makedirs(p)
 
 # STEP NO. 3 - Copy base files according to language specifications
 def copy_files():
