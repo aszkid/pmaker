@@ -66,6 +66,16 @@ def matches_any(var, source):
 def path_exists(p):
 	return os.path.isdir(p)
 
+# Execute a command line command (lel). NOT RECOMMENDED (it's purely OS-dependent)
+def execute(cmd):
+	process = subprocess.Popen(cmd.split(), stdout=subprocess.PIPE)
+	output = process.communicate()[0]
+	return output.rstrip('\n')
+
+# Check if the actual project is of 'lang' language
+def is_lang(lang):
+	return matches_any(ARGS.language, lang.split("/"))
+
 # -------------------------------
 # DA CONFIG DICTIONARY
 # -------------------------------
@@ -76,12 +86,13 @@ CFG = {
 			"pure" : False,
 			"libs" : ["opengl","glsdk"],
 			"flags" : [],
-			"paths" : [					#Relative to 'projname/'
+			"paths" : [
 				"source",
 				"projects",
 				"source/inc",
 				"source/src"
-			]
+			],
+			"basef" : []
 		},
 		"cpp" : {
 			"pure" : True,
@@ -95,7 +106,13 @@ CFG = {
 					"desc"		: "Using C++11 compile flag..."
 				}
 			],
-			"paths" : []
+			"paths" : [],
+			"basef" : [
+				{
+					"source"	: "c_cpp/main.cpp",
+					"dest"	: "source/src/main.cpp"
+				}
+			]
 		},
 		"c" : {
 			"pure" : True,
@@ -116,7 +133,13 @@ CFG = {
 					"desc"		: "Using C11 compile flag..."
 				}
 			],
-			"paths" : []
+			"paths" : [],
+			"basef" : [
+				{
+					"source"	: "c_cpp/main.c",
+					"dest"	: "source/src/main.c"
+				}
+			]
 		}
 	}
 }
@@ -125,7 +148,7 @@ CFG = {
 # BASE APPLICATION FUNCTIONS
 # -------------------------------
 
-# STEP NO. 0 - Check if language is existent
+# STEP NO. 0 - Check if command line argument language exists. Check only for pure languages (no mixins, e.g. 'cpp/c')
 def check_lang():	
 	for subl in CFG.get("langs"):
 		if (CFG.get("langs").get(subl).get("pure") == True) and (ARGS.language == subl):
@@ -167,7 +190,24 @@ def make_paths():
 
 # STEP NO. 3 - Copy base files according to language specifications
 def copy_files():
-	pass
+	file_queue = []
+	repeated = False
+	
+	for lang in CFG.get("langs"):
+		if matches_any(ARGS.language, lang.split("/")):
+			if CFG.get("langs").get(lang).get("basef"):
+				print "Creating files for project of language '{0}'...".format(lang)
+			else:
+				print "There are no files to copy of language '{0}'".format(lang)
+			for f in CFG.get("langs").get(lang).get("basef"):
+				dest = make_dest(f.get("dest"))
+				source = make_source(f.get("source"), "modules")
+				if (not os.path.isfile(dest)) and (os.path.isfile(source)):
+					print "Creating file from '{0}' to '{0}'...".format(source,dest)
+					file_queue.append(dict({("source",source),("dest",dest)}))
+
+	for r in file_queue:
+		shutil.copy(r["source"],r["dest"])
 
 # STEP NO. 4 (CPP/C Only) - Configure CMakeLists.txt
 def cmake_cfg():
@@ -184,93 +224,6 @@ libs = {
 	"cpp/c" : ["opengl","glsdk"],
 	"cpp" : ["boost","sfml","librocket"]
 }
-
-PNAME = args.name + "/"
-p_prefix = ""
-inside = False
-if os.getcwd().split(os.sep)[-1] == "pmaker":
-	p_prefix = "../"
-	inside = True
-	print("We are inside the pmaker directory!")
-PSOURCE = PNAME + "source"
-
-def path(p):
-	return p_prefix + p
-
-def execute(cmd):
-	process = subprocess.Popen(cmd.split(), stdout=subprocess.PIPE)
-	output = process.communicate()[0]
-	return output.rstrip('\n')
-
-def createdirs():
-	paths = [
-		PNAME, PNAME + "projs",
-		PNAME + "source", PNAME + "bin",
-		PNAME + "source/inc", PNAME + "source/src"
-	]
-	for i, p in enumerate(paths):
-		paths[i] = path(paths[i])
-		if not os.path.isdir(paths[i]):
-			print("Creating path '%s'" % paths[i])
-			os.makedirs(paths[i])
-
-def raze(do):
-	if do:
-		if str(raw_input("Do you really want to raze (y/N)? ")).lower() == "y":
-			if os.path.isdir(path(PNAME)) and do:
-				print("Razing...")
-				for r, ds, fs in os.walk(path(PNAME)):
-					for f in fs:
-						os.unlink(os.path.join(r, f))
-					for d in ds:
-						shutil.rmtree(os.path.join(r, d))
-		else:
-			print("Not razing after all...")
-
-def prepareres(res):
-	pre = "files/"
-	if not inside:
-		pre = "pmaker/" + pre
-	return pre + res
-
-def prepareobj(res, sub = ''):
-	return path(PSOURCE + sub + '/' + res)
-
-def docopies(files):
-	for r in files:
-		print("Copying '{0}' to '{1}'".format(r["from"],r["to"]))
-		shutil.copy(r["from"],r["to"])
-
-def copyfiles():
-	general = [".gitignore", "CMakeLists.txt"]
-	specific = {
-		"cpp" : {
-			"src": ["main.cpp"]
-		},
-		"c" : {
-			"src" : ["main.c"]
-		}
-	}
-	final = []
-	for f in general:
-		final.append(dict([('from', prepareres(f)), ('to', prepareobj(f))]))
-	for lang in specific:
-		if args.language == lang:
-			for t in specific[lang]:
-				for f in specific[lang][t]:
-					final.append(dict([('from',prepareres(f)),('to',prepareobj(f,"/"+t))]))
-	
-	already = False
-	
-	for r in final:
-		if os.path.isfile(r["to"]):
-			already = True
-	
-	if already:
-		if str(raw_input("Replace existing files (y/N)? ")).lower() == "y":
-			docopies(final)
-	else:
-		docopies(final)
 
 def putlibs(filec, out, lang):
 	for lib in libs[lang]:
@@ -324,8 +277,15 @@ def startgit(do):
 if(__name__ == "__main__"):
 	if not check_lang():	# Step 0
 		sys.exit(1)
-	clean_proj()	# Step 1
-	make_paths()	# Step 2
-	copy_files()	# Step 3
-	cmake_cfg()	# Step 4
-	start_git()	# Step 5
+	clean_proj()			# Step 1
+	make_paths()			# Step 2
+	copy_files()			# Step 3
+	
+	# Language-specific functions
+	if is_lang("c/cpp"):
+		cmake_cfg()		# Step 4
+	start_git()			# Step 5
+
+
+
+
