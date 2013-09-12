@@ -92,7 +92,12 @@ CFG = {
 				"source/inc",
 				"source/src"
 			],
-			"basef" : []
+			"basef" : [
+				{
+					"source"	: "CMakeLists.txt",
+					"dest"		: "source/CMakeLists.txt"
+				}
+			]
 		},
 		"cpp" : {
 			"pure" : True,
@@ -102,7 +107,7 @@ CFG = {
 					"name"		: "stdcpp11",
 					"excludes"	: "",
 					"from"		: "#STDCPP11#",
-					"to"			: cmake_set("CMAKE_CXX_FLAGS", "-std=c++11", True),
+					"to"		: cmake_set("CMAKE_CXX_FLAGS", "-std=c++11", True),
 					"desc"		: "Using C++11 compile flag..."
 				}
 			],
@@ -203,7 +208,7 @@ def copy_files():
 				dest = make_dest(f.get("dest"))
 				source = make_source(f.get("source"), "modules")
 				if (not os.path.isfile(dest)) and (os.path.isfile(source)):
-					print "Creating file from '{0}' to '{0}'...".format(source,dest)
+					print "Creating file from '{0}' to '{1}'...".format(source,dest)
 					file_queue.append(dict({("source",source),("dest",dest)}))
 
 	for r in file_queue:
@@ -275,16 +280,17 @@ def startgit(do):
 			execute("git init {0}".format(PSOURCE))
 """
 if(__name__ == "__main__"):
-	if not check_lang():	# Step 0
+	if not check_lang():
 		sys.exit(1)
-	clean_proj()			# Step 1
-	make_paths()			# Step 2
-	copy_files()			# Step 3
+	clean_proj()
+	make_paths()
+	copy_files()
 	
 	# Language-specific functions
 	if is_lang("c/cpp"):
-		cmake_cfg()		# Step 4
-	start_git()			# Step 5
+		cmake_cfg()
+	
+	start_git()
 
 
 
