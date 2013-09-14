@@ -282,24 +282,7 @@ def start_git():
 			if CFG.get("langs").get(lang).get("gitp"):
 				print "Initializing local Git repository..."
 				execute("git init {0}".format(make_dest(CFG.get("langs").get(lang).get("gitp"))))
-	
 
-"""
-def checkgit():
-	if os.path.isdir(PSOURCE + "/.git"):
-		if str(raw_input("A Git repo already exists. Re-initialize (y/N)? ")).lower() == "y":
-			return True
-		else:
-			return False
-	else:
-		return True
-
-def startgit(do):
-	if do:
-		if checkgit():
-			print "Initializing local Git repository..."
-			execute("git init {0}".format(PSOURCE))
-"""
 if(__name__ == "__main__"):
 	if not check_lang():
 		sys.exit(1)
