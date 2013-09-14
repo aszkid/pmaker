@@ -14,18 +14,18 @@ import argparse, subprocess, os, shutil, fileinput, re, sys
 parser = argparse.ArgumentParser()
 parser.add_argument("name", help="The project name", type=str)
 parser.add_argument("language", help="The project language (c, cpp)", type=str)
-parser.add_argument("--libs", help="Libraries to use", type=str)
 parser.add_argument("--path", help="Specify a different project path", type=str)
+parser.add_argument("--libs", help="Libraries to use (C/C++), separated by comma", type=str)
+parser.add_argument("--flags", help="Specify CMake compile flags (gcc, g++), separated by comma, without leading dash", type=str)
 parser.add_argument("--git", help="Create a local Git repository after project startup", action="store_true")
 parser.add_argument("--clean", help="Remove all contents of the project directory before starting", action="store_true")
-parser.add_argument("--cpp11", help="Force C++11 ('-std=c++11') in CMakeLists.txt", action="store_true")
-parser.add_argument("--c99", help="Force C99 ('-std=c99') in CMakeLists.txt", action="store_true")
-parser.add_argument("--c11", help="Force C11 ('-std=c11') in CMakeLists.txt", action="store_true")
+parser.add_argument("--cmake", help="Use the CMake generator for C/C++ projects", action="store_true")
 
 # -------------------------------
 # General variables
 # -------------------------------
 ARGS = parser.parse_args()							# Parsed arguments
+ARGS.flags = ARGS.flags.split(',')						# 
 PNAME = ARGS.name									# Project name
 PPATH = (ARGS.path if ARGS.path != None else PNAME) + "/"	# Project path
 SPATH = "pmaker/"									# Source path (the pmaker path)
@@ -37,10 +37,13 @@ RPATH = "files/"									# Resources path (inside SPATH)
 
 # CMake variable expander
 def cmake_set(var, val, rec = False):
-	if not rec:
-		return 'SET({0} "{1}")'.format(var, val)			# Return typical variable setting (e.g, 'SET(SOME_VAR "somevalue")')
-	else:
-		return 'SET({0} "${{{0}}} {1}")'.format(var, val)		# Return 'recursive' variable setting (e.g, 'SET(SOME_VAR "${SOME_VAR} somevalue")')
+	varlist = var.split(",")
+	strlist = []
+	
+	for v in varlist:
+		strlist.append('SET({0} "{1}")'.format(v, val)) if not rec else strlist.append('SET({0} "${{{0}}} {1}")'.format(v, val))
+	
+	return '\n'.join(strlist)
 
 # Path helpers
 def make_source(name, sub = None):
@@ -59,8 +62,8 @@ def user_confirm(msg, pref="y"):
 		return True if pref == "y" else False
 
 # Check if a variable matches any element of a list
-def matches_any(var, source):
-	return any(sub == var for sub in source)
+def matches_any(var, source, subi = None):
+	return any(((sub[subi] == var) if subi else (sub == var)) for sub in source)
 	
 # Check if a path exists
 def path_exists(p):
@@ -84,31 +87,65 @@ CFG = {
 	"langs" : {
 		"cpp/c" : {
 			"pure" : False,
-			"libs" : ["opengl","glsdk"],
-			"flags" : [],
+			"libs" : ["opengl","glsdk","pthreads"],
+			"cmake" : [
+				{
+					"name"		: "projname",
+					"excludes"	: "",
+					"from"		: "#PROJNAME#",
+					"to"			: ARGS.name,
+					"req"		: True
+				},
+				{
+					"name"		: "Wall",
+					"excludes"	: "",
+					"from"		: "#WALL#",
+					"to"			: cmake_set("CMAKE_CXX_FLAGS,CMAKE_C_FLAGS", "-Wall", True)
+				},
+				{
+					"name"		: "Wextra",
+					"excludes"	: "",
+					"from"		: "#WEXTRA#",
+					"to"			: cmake_set("CMAKE_CXX_FLAGS,CMAKE_C_FLAGS", "-Wextra", True)
+				},
+				{
+					"name"		: "pedantic",
+					"excludes"	: "",
+					"from"		: "#PEDANTIC#",
+					"to"			: cmake_set("CMAKE_CXX_FLAGS,CMAKE_C_FLAGS", "-pedantic", True)
+				},
+				{
+					"name"		: "ansi",
+					"excludes"	: "",
+					"from"		: "#ANSI#",
+					"to"			: cmake_set("CMAKE_CXX_FLAGS,CMAKE_C_FLAGS", "-ansi", True)
+				}
+			],
 			"paths" : [
 				"source",
 				"projects",
+				"bin",
 				"source/inc",
 				"source/src"
 			],
 			"basef" : [
 				{
 					"source"	: "CMakeLists.txt",
-					"dest"		: "source/CMakeLists.txt"
+					"dest"	: "source/CMakeLists.txt",
+					"arg"	: ARGS.cmake
 				}
-			]
+			],
+			"gitp":	"source/"
 		},
 		"cpp" : {
 			"pure" : True,
 			"libs" : ["boost", "sfml"],
-			"flags" : [
+			"cmake" : [
 				{
 					"name"		: "stdcpp11",
 					"excludes"	: "",
 					"from"		: "#STDCPP11#",
-					"to"		: cmake_set("CMAKE_CXX_FLAGS", "-std=c++11", True),
-					"desc"		: "Using C++11 compile flag..."
+					"to"			: cmake_set("CMAKE_CXX_FLAGS", "-std=c++11", True)
 				}
 			],
 			"paths" : [],
@@ -122,20 +159,18 @@ CFG = {
 		"c" : {
 			"pure" : True,
 			"libs" : [],
-			"flags" : [
+			"cmake" : [
 				{
 					"name"		: "stdc99",
 					"excludes"	: "stdc11",
 					"from"		: "#STDC99#",
-					"to"			: cmake_set("CMAKE_C_FLAGS", "-std=c99", True),
-					"desc"		: "Using C99 compile flag..."
+					"to"			: cmake_set("CMAKE_C_FLAGS", "-std=c99", True)
 				},
 				{
 					"name"		: "stdc11",
 					"excludes"	: "stdc99",
 					"from"		: "#STDC11#",
-					"to"			: cmake_set("CMAKE_C_FLAGS", "-std=c11", True),
-					"desc"		: "Using C11 compile flag..."
+					"to"			: cmake_set("CMAKE_C_FLAGS", "-std=c11", True)
 				}
 			],
 			"paths" : [],
@@ -164,7 +199,7 @@ def check_lang():
 
 # STEP NO. 1 (Optional) - Clean project directory
 def clean_proj():
-	if (ARGS.clean == True) and (user_confirm("Really clean project path","n")):
+	if user_confirm("Really clean project path","n"):
 		print "Cleaning project path ({0})...".format(PPATH)
 		for r, ds, fs in os.walk(PPATH):
 			for f in fs:
@@ -207,7 +242,7 @@ def copy_files():
 			for f in CFG.get("langs").get(lang).get("basef"):
 				dest = make_dest(f.get("dest"))
 				source = make_source(f.get("source"), "modules")
-				if (not os.path.isfile(dest)) and (os.path.isfile(source)):
+				if (not os.path.isfile(dest)) and (os.path.isfile(source)) and (f.get("arg",True)):
 					print "Creating file from '{0}' to '{1}'...".format(source,dest)
 					file_queue.append(dict({("source",source),("dest",dest)}))
 
@@ -216,54 +251,40 @@ def copy_files():
 
 # STEP NO. 4 (CPP/C Only) - Configure CMakeLists.txt
 def cmake_cfg():
-	pass
+	print "Configuring CMakeLists.txt..."
+	flags = []
+	contents = open(make_dest("source/CMakeLists.txt")).read()
+	
+	for lang in CFG.get("langs"):
+		if matches_any(ARGS.language, lang.split("/")):
+			for of in CFG.get("langs").get(lang).get("cmake"):
+				if (matches_any(of["name"], ARGS.flags)) or (of.get("req", False) == True):
+					flags.append(dict({("from",of["from"]),("to",of["to"])}))
+			if ARGS.libs:
+				for ln in CFG.get("langs").get(lang).get("libs"):
+					if matches_any(ln, ARGS.libs.split(",")):
+						print "Using library '{0}'...".format(ln)
+						flags.append(dict({("from","#USE{0}#".format(ln.upper())),("to",open(make_source("{0}.txt".format(ln), "modules/c_cpp")).read())}))
+	
+	for f in flags:
+		contents = contents.replace(f["from"], f["to"])
+	
+	wf = open(make_dest("source/CMakeLists.txt"), 'w')
+	wf.write(contents)
+	wf.close()
+										
+				
 
 # STEP NO. 5 (Optional) - Start a local Git repository
 def start_git():
-	pass
-
-
+	for lang in CFG.get("langs"):
+		if matches_any(ARGS.language, lang.split("/")):
+			if CFG.get("langs").get(lang).get("gitp"):
+				print "Initializing local Git repository..."
+				execute("git init {0}".format(make_dest(CFG.get("langs").get(lang).get("gitp"))))
+	
 
 """
-libs = {
-	"cpp/c" : ["opengl","glsdk"],
-	"cpp" : ["boost","sfml","librocket"]
-}
-
-def putlibs(filec, out, lang):
-	for lib in libs[lang]:
-		if any(ulib == lib for ulib in args.libs.split(',')):
-			print("Specifying '{0}' ({1}) library in CMakeLists.txt...".format(lib, lang))
-			filec = filec.replace("#USE{0}#".format(lib.upper()), open(prepareres("modules/{0}.txt".format(lib))).read())
-	
-	f = open(prepareobj("CMakeLists.txt"),'w')
-	f.write(filec)
-	f.close()
-	return filec
-		
-def cmakeset():
-	s = open(prepareobj("CMakeLists.txt")).read()
-	s = s.replace('__projxxxname__', args.name)
-	print("Setting compilation flags...")
-	if args.language == "cpp":
-		if args.cpp11:
-			s = s.replace('#USECPP11#', 'SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11")')
-			print("Using C++11 (C++0x) compile otion...")
-	elif args.language == "c":
-		if args.c99:
-			s = s.replace('#USEC99#', 'SET(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -std=c99")')
-			print("Using C99 compile otion...")
-		elif args.c11:
-			s = s.replace('#USEC99#', 'SET(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -std=c11")')
-			print("Using C111 compile otion...")
-	
-	if args.libs != None:
-		for lang in libs:
-			if lang == args.language or any(subl == args.language for subl in lang.split('/')):
-				s = putlibs(s, open(prepareobj("CMakeLists.txt"),'w'), lang)
-	else:
-		print("Not using external libraries.")
-
 def checkgit():
 	if os.path.isdir(PSOURCE + "/.git"):
 		if str(raw_input("A Git repo already exists. Re-initialize (y/N)? ")).lower() == "y":
@@ -282,15 +303,14 @@ def startgit(do):
 if(__name__ == "__main__"):
 	if not check_lang():
 		sys.exit(1)
-	clean_proj()
+	if ARGS.clean == True:
+		clean_proj()
 	make_paths()
 	copy_files()
-	
-	# Language-specific functions
-	if is_lang("c/cpp"):
+	if is_lang("c/cpp") and ARGS.cmake:
 		cmake_cfg()
-	
-	start_git()
+	if ARGS.git == True:
+		start_git()
 
 
 
