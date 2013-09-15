@@ -6,7 +6,7 @@
 # Author: aszkid
 # -------------------------------
 
-import argparse, subprocess, os, shutil, fileinput, re, sys
+import argparse, subprocess, os, shutil, sys
 
 # -------------------------------
 # Arguments configuration
@@ -64,7 +64,7 @@ def user_confirm(msg, pref="y"):
 # Check if a variable matches any element of a list
 def matches_any(var, source, subi = None):
 	return any(((sub[subi] == var) if subi else (sub == var)) for sub in source)
-	
+
 # Check if a path exists
 def path_exists(p):
 	return os.path.isdir(p)
@@ -272,8 +272,6 @@ def cmake_cfg():
 	wf = open(make_dest("source/CMakeLists.txt"), 'w')
 	wf.write(contents)
 	wf.close()
-										
-				
 
 # STEP NO. 5 (Optional) - Start a local Git repository
 def start_git():
@@ -294,7 +292,4 @@ if(__name__ == "__main__"):
 		cmake_cfg()
 	if ARGS.git == True:
 		start_git()
-
-
-
 
