@@ -1,3 +1,3 @@
-pmaker (dev)
+pmaker
 ======
 Working alpha.
